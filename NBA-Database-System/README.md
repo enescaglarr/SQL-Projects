@@ -82,8 +82,8 @@ This project is a comprehensive **NBA Team Management System** designed to manag
 3. Retrieve stadium information using the `GetAllStadiums` procedure.
 
 ## Credits
-- **Çağla Güzel** -
-- **Enes Çağlar** - 
+- **Çağla Güzel** 
+- **Enes Çağlar** 
 
 ---
 
