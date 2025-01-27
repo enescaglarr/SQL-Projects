@@ -31,12 +31,6 @@ A comprehensive database system for managing NBA data, including teams, players,
 3. Connect the database to the web application using the provided frontend files (`index.html`).
 4. Use the web application or SQL scripts to manage and interact with the data.
 
-**Resources**:
-- [Phase 2 Report](https://your-link.com)  
-- [Phase 3 Report](https://your-link.com)
-
----
-
 ## Future Projects
 More projects will be added to this repository soon, focusing on:
 - Complex SQL queries for data analysis.
