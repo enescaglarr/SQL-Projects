@@ -3,6 +3,22 @@
 ## Overview
 This project is a comprehensive **NBA Team Management System** designed to manage and interact with various aspects of NBA data, including teams, players, coaches, staff, stadiums, and games. It integrates database design principles with web-based user interfaces and utilizes advanced SQL concepts like triggers and stored procedures.
 
+### Description of Files and Folders
+1. **static/**:
+   - Contains static assets like images (`background-image.jpg`, `nba-logo.png`) used in the web application.
+
+2. **templates/**:
+   - Contains the main HTML file (`index.html`) for the web interface.
+
+3. **app.py**:
+   - Python backend script for handling interactions between the web application and the database.
+
+4. **cs306ProjectPhase2SQLScript.sql**:
+   - SQL script to set up the database schema, including tables, stored procedures, and triggers.
+
+5. **README.md**:
+   - Documentation for the project.
+
 ## Features
 ### Database Features
 - **Triggers**:
@@ -37,14 +53,16 @@ This project is a comprehensive **NBA Team Management System** designed to manag
 
 ### Steps
 1. **Database Setup**:
-   - Import the SQL script (`cs306ProjectPhase2SQLScript.sql`) to set up the database.
-   - Ensure triggers and procedures are correctly installed.
-2. **Web Application**:
-   - Host the `index.html` and related files on a web server.
-   - Link the web application to your Firebase project by updating the configuration in the `index.html` file.
-3. **Access**:
-   - Open the website to interact with NBA management data.
-   - Admin login: Access additional features for managing user and guest messages.
+   - Run `cs306ProjectPhase2SQLScript.sql` to create the database schema.
+   - Verify triggers and stored procedures are installed correctly.
+2. **Web Application Setup**:
+   - Place the `app.py`, `static/`, and `templates/` files in your project folder.
+   - Update Firebase configuration in `app.py` and `index.html`.
+3. **Run the Application**:
+   - Start the Flask server by running `app.py`.
+   - Open the web interface via the localhost URL.
+4. **Interacting with the System**:
+   - Use the web application to manage NBA data and messages.
 
 ## Technical Details
 ### SQL Concepts
