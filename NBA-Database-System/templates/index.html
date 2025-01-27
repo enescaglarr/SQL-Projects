@@ -1,0 +1,2729 @@
+<!DOCTYPE html>
+<html lang="en">
+
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NBA Team Management</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
+    <link rel="icon" href="/static/nba-logo.png" type="image/png">
+    <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;700&display=swap" rel="stylesheet">
+    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-firestore.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-auth.js"></script>
+
+
+    <script type="module">
+        import { signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/9.17.1/firebase-auth.js";
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.17.1/firebase-app.js";
+        import { getAuth, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/9.17.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc } from "https://www.gstatic.com/firebasejs/9.17.1/firebase-firestore.js";
+        import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.17.1/firebase-auth.js";
+        import { signOut } from "https://www.gstatic.com/firebasejs/9.17.1/firebase-auth.js";
+        import { getDatabase, ref, push, set, get } from "https://www.gstatic.com/firebasejs/9.17.1/firebase-database.js";
+
+        import { onChildAdded } from "https://www.gstatic.com/firebasejs/9.17.1/firebase-database.js";
+
+
+
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyAMEQvNXa9EP5-shct9cEJfF1aURxMMBw8",
+            authDomain: "nba-database-management.firebaseapp.com",
+            databaseURL: "https://nba-database-management-default-rtdb.europe-west1.firebasedatabase.app",
+            projectId: "nba-database-management",
+            storageBucket: "nba-database-management.firebasestorage.app",
+            messagingSenderId: "717591143638",
+            appId: "1:717591143638:web:248687875300de6cfc1577",
+            measurementId: "G-WXG8TVS3D5"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const database = getDatabase(app);
+
+        const messagesContainer = document.getElementById('messagesContainer');
+        const chatForm = document.getElementById('chatForm');
+        const chatMessageInput = document.getElementById('chatMessageInput');
+        const supportSection = document.getElementById("support");
+        const loginPrompt = document.getElementById("loginPrompt");
+        const logoutButton = document.getElementById("logoutButton");
+        let currentUser = null;
+
+        function setupSupportSectionVisibility() {
+            const supportSection = document.getElementById("support");
+            const loginPrompt = document.getElementById("loginPrompt");
+            const messageDisplayContainer = document.getElementById("messageDisplayContainer");
+            const logoutButton = document.getElementById("logoutButton");
+            const adminContainer = document.getElementById("adminContainer");
+
+            onAuthStateChanged(auth, (user) => {
+                const storedGuestId = localStorage.getItem("guestId"); // Check if guest user exists
+
+                if (user) {
+                    // User is logged in
+                    currentUser = user;
+
+                    if (user.email === "admin@gmail.com") {
+                        // Admin view
+                        supportSection.style.display = "none"; // Hide support form for admin
+                        messageDisplayContainer.style.display = "none"; // Hide user message container for admin
+                        adminContainer.style.display = "block"; // Show admin-specific part
+
+                        // Call populateUserDropdown only for admin
+                        populateUserDropdown();
+                    } else {
+                        // Regular user view
+                        supportSection.style.display = "block"; // Show support form for users
+                        messageDisplayContainer.style.display = "block"; // Show user message container
+                        adminContainer.style.display = "none"; // Hide admin-specific part for regular users
+                    }
+
+                    loginPrompt.style.display = "none"; // Hide login prompt
+                    logoutButton.style.display = "block"; // Show the Logout button
+                } else if (storedGuestId) {
+                    // Guest user view
+                    currentUser = { uid: storedGuestId, isGuest: true }; // Set guest user data
+                    supportSection.style.display = "block"; // Show support form for guest
+                    messageDisplayContainer.style.display = "block"; // Show user message container for guest
+                    adminContainer.style.display = "none"; // Hide admin-specific part for guest
+
+                    loginPrompt.style.display = "none"; // Hide login prompt
+                    logoutButton.style.display = "block"; // Show the Logout button
+                } else {
+                    // User is not logged in
+                    currentUser = null;
+                    supportSection.style.display = "none"; // Hide support form
+                    messageDisplayContainer.style.display = "none"; // Hide user message container
+                    adminContainer.style.display = "none"; // Hide admin-specific part
+                    loginPrompt.style.display = "block"; // Show login prompt
+                    logoutButton.style.display = "none"; // Hide Logout button
+                }
+            });
+        }
+
+
+
+
+        document.getElementById("logoutButton").addEventListener("click", async () => {
+            try {
+                // Perform sign out
+                await signOut(auth);
+
+                // Display success alert and reset UI
+                alert("You have been logged out successfully!");
+
+                // Safely clear user-specific message and admin reply, only if the elements exist
+                const userMessageElement = document.getElementById("userMessage");
+                const adminReplyElement = document.getElementById("adminReply");
+
+                if (userMessageElement) userMessageElement.textContent = ""; // Clear user-specific message
+                if (adminReplyElement) adminReplyElement.textContent = ""; // Clear admin reply
+
+                // Update UI after logout
+                document.getElementById("logoutButton").style.display = "none"; // Hide Logout button
+                document.getElementById("loginPrompt").style.display = "block"; // Show Login/Signup buttons
+                document.getElementById("support").style.display = "none"; // Hide Support section
+                document.getElementById("messageDisplayContainer").style.display = "none"; // Hide Chat section
+
+                // Return early to prevent further execution
+                return;
+            } catch (error) {
+                // Display error alert only if `signOut` fails
+                console.error("Error logging out:", error);
+                alert("Error logging out. Please try again.");
+            }
+        });
+
+        function setupMessageListener(userId) {
+            const userChatRef = ref(database, `chats/${userId}`);
+            onChildAdded(userChatRef, (snapshot) => {
+                const message = snapshot.val();
+                const sender = message.sender === 'admin' ? 'admin' : 'user';
+                appendMessage(message, sender);
+            });
+        }
+
+        // Attach the listener when the user logs in or a guest session starts
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                setupMessageListener(user.uid);
+            } else {
+                const storedGuestId = localStorage.getItem('guestId');
+                if (storedGuestId) {
+                    setupMessageListener(storedGuestId);
+                }
+            }
+        });
+
+
+
+
+        // Initialize visibility on DOMContentLoaded
+        document.addEventListener("DOMContentLoaded", setupSupportSectionVisibility);
+
+        async function fetchAndDisplayUserMessages(userId) {
+            try {
+                const userChatRef = ref(database, `chats/${userId}`);
+                const snapshot = await get(userChatRef);
+
+                const messagesContainer = document.getElementById('messagesContainer');
+                if (!messagesContainer) {
+                    console.error("Messages container not found!");
+                    return;
+                }
+
+                messagesContainer.innerHTML = ""; // Clear previous messages
+
+                if (snapshot.exists()) {
+                    const messages = snapshot.val();
+                    Object.values(messages).forEach((message) => {
+                        const sender = message.sender === 'admin' ? 'admin' : 'user';
+                        appendMessage(message, sender);
+                    });
+                } else {
+                    messagesContainer.innerHTML = "<p>No messages yet.</p>";
+                }
+            } catch (error) {
+                console.error("Error fetching messages:", error);
+                const messagesContainer = document.getElementById('messagesContainer');
+                if (messagesContainer) {
+                    messagesContainer.innerHTML = "<p class='text-danger'>Failed to load messages. Please try again later.</p>";
+                }
+            }
+        }
+
+
+
+
+        function appendMessage(message, sender) {
+            const messagesContainer = document.getElementById('messagesContainer');
+            if (!messagesContainer) {
+                console.error('Messages container not found!');
+                return;
+            }
+
+            // Validate message structure
+            if (!message || !message.text || !message.timestamp) {
+                console.error('Invalid message format:', message);
+                return;
+            }
+
+            const messageElement = document.createElement('div');
+            messageElement.textContent = `${message.text} (${new Date(message.timestamp).toLocaleTimeString()})`;
+            messageElement.style.padding = '10px';
+            messageElement.style.borderRadius = '8px';
+            messageElement.style.margin = '5px 0';
+            messageElement.style.maxWidth = '80%';
+            messageElement.style.alignSelf = sender === 'user' ? 'flex-end' : 'flex-start';
+            messageElement.style.backgroundColor = sender === 'user' ? '#d1e7dd' : '#f8d7da';
+
+            messagesContainer.appendChild(messageElement);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight; // Scroll to the latest message
+        }
+
+        // Attach event listeners for both forms
+        document.getElementById('supportForm').addEventListener('submit', async (e) => {
+            e.preventDefault(); // Prevent default form submission
+
+            // Check if the user is logged in
+            if (!currentUser) {
+                alert('You must register or log in to use the support system!');
+                return;
+            }
+
+            // Collect data from the support form
+            const name = document.getElementById('supportName').value.trim();
+            const category = document.getElementById('supportCategory').value.trim();
+            const message = document.getElementById('supportMessage').value.trim();
+
+            if (!name || !category || !message) {
+                alert('All fields in the support form are required.');
+                return;
+            }
+
+            // Push data to Firebase
+            const userId = currentUser.uid;
+            const userChatRef = ref(database, `chats/${userId}`);
+
+            try {
+                await push(userChatRef, {
+                    sender: 'user',
+                    name: name, // From the form
+                    category: category, // From the form
+                    text: message,
+                    timestamp: Date.now(),
+                });
+
+
+                // Push the automated admin reply
+                await push(userChatRef, {
+                    sender: 'admin',
+                    text: 'Your message has reached us. We will get back to you shortly. -ADMIN',
+                    timestamp: Date.now(),
+                });
+
+                alert('Support message sent successfully!');
+                document.getElementById('supportForm').reset(); // Clear the form
+            } catch (error) {
+                console.error('Error sending support message:', error);
+                alert('Failed to send the support message. Please try again.');
+            }
+        })
+        document.getElementById('chatForm').addEventListener('submit', async (e) => {
+            e.preventDefault(); // Prevent default form submission
+
+            // Check if the user is logged in or a guest
+            if (!currentUser) {
+                alert('You must register or log in to use the chat!');
+                return;
+            }
+
+            // Collect data from the chat form
+            const messageText = document.getElementById('chatMessageInput').value.trim();
+
+            if (!messageText) {
+                alert('Message cannot be empty.');
+                return;
+            }
+
+            // Prepare data for Firebase
+            const userId = currentUser.uid;
+            const userChatRef = ref(database, `chats/${userId}`);
+            const messageData = {
+                sender: 'user',
+                text: messageText,
+                timestamp: Date.now(),
+            };
+
+            // Only include email if it exists (for logged-in users)
+            if (currentUser.email) {
+                messageData.email = currentUser.email;
+            }
+
+            try {
+                // Push the user's message to Firebase
+                await push(userChatRef, messageData);
+
+                // Push the automated admin reply
+                await push(userChatRef, {
+                    sender: 'admin',
+                    text: 'Your message has reached us. We will get back to you shortly. -ADMIN',
+                    timestamp: Date.now(),
+                });
+
+                document.getElementById('chatMessageInput').value = ''; // Clear the input field
+            } catch (error) {
+                console.error('Error sending chat message:', error);
+                alert('Failed to send the chat message. Please try again.');
+            }
+        });
+
+
+
+
+        document.getElementById("signUpForm").addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('signUpEmail').value;
+            const password = document.getElementById('signUpPassword').value;
+
+            try {
+                await createUserWithEmailAndPassword(auth, email, password);
+                alert('Sign-up successful!');
+            } catch (error) {
+                console.error('Error signing up:', error.message);
+                alert('Error signing up: ' + error.message);
+            }
+        });
+
+        document.getElementById("loginForm").addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+
+            try {
+                await signInWithEmailAndPassword(auth, email, password);
+                alert('Login successful!');
+            } catch (error) {
+                console.error('Error logging in:', error.message);
+                alert('Error logging in: ' + error.message);
+            }
+        });
+
+        // Only populate the dropdown after admin login
+        async function populateUserDropdown() {
+            const dropdownElement = document.getElementById("selectUserDropdown");
+            const usersRef = ref(database, "chats");
+
+            try {
+                const snapshot = await get(usersRef);
+
+                if (snapshot.exists()) {
+                    const users = snapshot.val();
+
+                    // Clear existing options
+                    dropdownElement.innerHTML = "";
+
+                    // Add a default option
+                    const defaultOption = document.createElement("option");
+                    defaultOption.value = "";
+                    defaultOption.textContent = "Select a user";
+                    defaultOption.disabled = true;
+                    defaultOption.selected = true; // Make it the selected default
+                    dropdownElement.appendChild(defaultOption);
+
+                    // Populate dropdown with user IDs
+                    Object.keys(users).forEach((userId) => {
+                        const option = document.createElement("option");
+                        option.value = userId;
+                        option.textContent = userId; // Or replace with an email/name if available
+                        dropdownElement.appendChild(option);
+                    });
+                } else {
+                    // No users found
+                    dropdownElement.innerHTML = `<option disabled selected>No users available</option>`;
+                }
+            } catch (error) {
+                console.error("Error populating user dropdown:", error);
+                alert("Failed to load users. Please check your Firebase rules or permissions.");
+            }
+        }
+
+        // Initialize visibility on DOMContentLoaded
+        document.addEventListener("DOMContentLoaded", setupSupportSectionVisibility);
+
+
+
+        // Event listener for admin dropdown to fetch and display user messages
+        document.getElementById("selectUserDropdown").addEventListener("change", async (e) => {
+            const selectedUserId = e.target.value; // Get the selected user ID
+            const adminMessagesContainer = document.getElementById("adminMessagesContainer");
+
+            if (!selectedUserId) {
+                console.error("No user selected.");
+                adminMessagesContainer.innerHTML = "<p>Select a user to view messages.</p>";
+                return;
+            }
+
+            try {
+                const userChatRef = ref(database, `chats/${selectedUserId}`);
+                const snapshot = await get(userChatRef);
+
+                adminMessagesContainer.innerHTML = ""; // Clear previous messages
+
+                if (snapshot.exists()) {
+                    const messages = snapshot.val();
+
+                    Object.values(messages).forEach((message) => {
+                        const sender = message.sender === 'admin' ? 'admin' : 'user';
+
+                        // Create message element
+                        const messageElement = document.createElement("div");
+                        messageElement.textContent = `${sender}: ${message.text}`;
+                        messageElement.style.backgroundColor = sender === "admin" ? "#f8d7da" : "#d1e7dd";
+                        messageElement.style.padding = "10px";
+                        messageElement.style.margin = "5px 0";
+                        messageElement.style.borderRadius = "8px";
+
+                        // Append to the container
+                        adminMessagesContainer.appendChild(messageElement);
+                    });
+                } else {
+                    console.log("No messages found for this user.");
+                    adminMessagesContainer.innerHTML = "<p>No messages yet for this user.</p>";
+                }
+            } catch (error) {
+                console.error("Error fetching user messages:", error);
+                adminMessagesContainer.innerHTML = "<p class='text-danger'>Failed to load messages. Please try again later.</p>";
+            }
+        });
+
+        // Send a message as admin
+        document.getElementById("adminChatForm").addEventListener("submit", async (e) => {
+            e.preventDefault();
+
+            // Use the correct ID for the dropdown
+            const selectedUserId = document.getElementById("selectUserDropdown").value;
+            let messageText = document.getElementById("adminMessageInput").value.trim();
+            messageText = messageText + " FROM ADMIN"
+            if (!selectedUserId || !messageText) {
+                alert("Select a user and type a message.");
+                return;
+            }
+
+            const userChatRef = ref(database, `chats/${selectedUserId}`);
+
+            try {
+                // Push the new message to Firebase
+                await push(userChatRef, {
+                    sender: "admin",
+                    text: messageText,
+                    timestamp: Date.now(),
+                });
+
+                // Clear the input field
+                document.getElementById("adminMessageInput").value = "";
+
+                // Fetch and update the chat history immediately
+                const adminMessagesContainer = document.getElementById("adminMessagesContainer");
+                const snapshot = await get(userChatRef);
+
+                if (snapshot.exists()) {
+                    const messages = snapshot.val();
+
+                    // Clear the container and append updated messages
+                    adminMessagesContainer.innerHTML = "";
+                    Object.values(messages).forEach((message) => {
+                        const messageElement = document.createElement("div");
+                        const sender = message.sender === "admin" ? "admin" : "user";
+
+                        messageElement.textContent = `${sender}: ${message.text}`;
+                        messageElement.style.backgroundColor = sender === "admin" ? "#f8d7da" : "#d1e7dd";
+                        messageElement.style.padding = "10px";
+                        messageElement.style.margin = "5px 0";
+                        messageElement.style.borderRadius = "8px";
+
+                        adminMessagesContainer.appendChild(messageElement);
+                    });
+                } else {
+                    adminMessagesContainer.innerHTML = "<p>No messages yet.</p>";
+                }
+            } catch (error) {
+                console.error("Error sending admin message:", error);
+                alert("Failed to send the message. Please try again.");
+            }
+        });
+
+        document.getElementById('guestButton').addEventListener('click', () => {
+            // Generate a unique guestId
+            const guestId = `guest_${Date.now()}`;
+            localStorage.setItem('guestId', guestId); // Store guestId in localStorage
+            alert('You are now continuing as a guest!');
+
+            // Update UI for guest mode
+            document.getElementById('loginPrompt').style.display = 'none';
+            document.getElementById('support').style.display = 'block';
+            document.getElementById('messageDisplayContainer').style.display = 'block';
+            document.getElementById('logoutButton').style.display = 'block';
+
+            // Set currentUser to guest
+            currentUser = { uid: guestId, isGuest: true };
+
+            // Initialize real-time listener for guest
+            setupMessageListener(guestId);
+        });
+
+
+        window.addEventListener('beforeunload', () => {
+            // Remove guestId when the user closes the page
+            if (localStorage.getItem('guestId')) {
+                localStorage.removeItem('guestId');
+            }
+        });
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const storedGuestId = localStorage.getItem('guestId');
+
+            if (storedGuestId) {
+                // Set currentUser for guest
+                currentUser = { uid: storedGuestId, isGuest: true };
+
+                // Fetch and display existing messages for the guest
+                fetchAndDisplayUserMessages(storedGuestId);
+
+                // Set up real-time listener for new messages
+                setupMessageListener(storedGuestId);
+
+                // Update the UI for the guest user
+                document.getElementById('loginPrompt').style.display = 'none';
+                document.getElementById('support').style.display = 'block';
+                document.getElementById('messageDisplayContainer').style.display = 'block';
+                document.getElementById('logoutButton').style.display = 'block';
+            }
+        });
+
+
+
+
+
+
+    </script>
+
+
+
+    <style>
+        html,
+        body {
+            font-family: 'Oswald', sans-serif;
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            background-image: url("/static/background-image.jpg");
+            background-size: cover;
+            /* Cover the entire section */
+            background-repeat: no-repeat;
+            /* Prevent tiling */
+            background-position: center;
+            overflow-x: hidden;
+
+        }
+
+
+
+        /* New background for Manage NBA Teams section */
+        /* Ensure background image fits nicely */
+        #teams {
+            backdrop-filter: blur(10px);
+            /* Your new NBA teams image */
+            background-size: fit;
+            background-repeat: no-repeat;
+            background-position: center;
+            padding: 50px 0;
+            /* Adjust padding for space */
+            color: black;
+            /* Ensure text is visible */
+            text-align: center;
+            /* Center align text */
+        }
+
+        /* Background for Players section */
+        #players {
+
+            background-size: cover;
+            background-repeat: no-repeat;
+            background-position: center;
+            padding: 50px 0;
+            color: white;
+        }
+
+
+        .navbar {
+            background-color: rgba(0, 0, 0, 0.8);
+        }
+
+
+
+
+        .card {
+            background-color: rgba(0, 0, 0, 0.6);
+            /* Dark semi-transparent background */
+            border-radius: 15px;
+            /* Rounded corners */
+            padding: 20px;
+            /* Add padding for spacing */
+            color: white;
+            /* Text color */
+            transition: transform 0.3s ease, box-shadow 0.3s ease, background-color 0.3s ease;
+        }
+
+        .card:hover {
+            transform: scale(1.05);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+            /* Stronger shadow on hover */
+            background-color: rgba(255, 255, 255, 0.9);
+            /* White background on hover */
+            color: #000;
+            /* Change text to black when hovered */
+        }
+
+        .card-title {
+            font-size: 1.5rem;
+            /* Increase the size of titles */
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 15px;
+        }
+
+
+
+        .row.g-4 {
+            justify-content: center;
+            /* Ensures all cards are centered in the row */
+        }
+
+        .btn-primary {
+            background: linear-gradient(90deg, #17408b, #c9082a);
+            /* Dark Cornflower Blue to Philippine Red gradient */
+            color: #ffffff;
+            /* White */
+            border: none;
+            font-size: 1rem;
+            padding: 10px 20px;
+            border-radius: 10px;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .btn-primary:hover {
+            transform: scale(1.1);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+            background: linear-gradient(90deg, #c9082a, #17408b);
+            /* Reverse the gradient on hover */
+        }
+
+        .teams-section {
+            margin-top: 50px;
+            /* Adjust this value for more spacing */
+            padding-top: 20px;
+            /* Optional for internal padding */
+        }
+
+        /* Background for Coaches & Staffs section */
+        #coaches-staffs {
+            backdrop-filter: blur(10px);
+            padding: 50px 0;
+            color: black;
+        }
+
+        #staff {
+
+            background-size: cover;
+            background-repeat: no-repeat;
+            background-position: center;
+            padding: 50px 0;
+            color: white;
+        }
+
+        /* Background for Stadiums section */
+        #stadiums {
+            backdrop-filter: blur(10px);
+            padding: 50px 0;
+            color: black;
+        }
+
+        /* Background for Games section */
+        #games {
+
+            background-size: cover;
+            background-repeat: no-repeat;
+            background-position: center;
+            padding: 50px 0;
+            color: white;
+        }
+
+        #support {
+            background-color: rgba(255, 255, 255, 0.9);
+            /* Light background with transparency */
+            border-radius: 15px;
+            /* Rounded corners */
+            padding: 30px;
+            /* Add padding around the form */
+            margin: 30px auto;
+            /* Center the form */
+            max-width: 700px;
+            /* Set maximum width for the form */
+            box-shadow: 0px 8px 20px rgba(0, 0, 0, 0.3);
+            /* Adds a shadow for depth */
+        }
+
+        #support h2 {
+            text-align: center;
+            font-size: 2.5rem;
+            /* Larger heading size */
+            color: #000;
+            /* NBA red */
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+            /* Subtle shadow */
+            margin-bottom: 20px;
+        }
+
+        #support label {
+            font-weight: bold;
+            color: #000;
+            /* High contrast black */
+        }
+
+
+
+
+        #support input,
+        #support select,
+        #support textarea {
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            padding: 10px;
+            width: 100%;
+            box-shadow: inset 0px 2px 4px rgba(0, 0, 0, 0.1);
+            /* Subtle inner shadow */
+        }
+
+        #support input::placeholder,
+        #support textarea::placeholder {
+            color: #888;
+            /* Placeholder color */
+        }
+
+        #support button {
+            background: linear-gradient(90deg, #17408b, #c9082a);
+            /* NBA theme */
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            display: block;
+            margin: 20px auto 0;
+        }
+
+        #support button:hover {
+            transform: scale(1.05);
+            box-shadow: 0px 5px 15px rgba(0, 0, 0, 0.3);
+            background: linear-gradient(90deg, #c9082a, #17408b);
+            /* Reverse gradient */
+        }
+
+
+        .card {
+            opacity: 0;
+            /* Start invisible */
+            transform: translateY(20px);
+            /* Start slightly below */
+            animation: fadeIn 0.6s ease forwards;
+        }
+
+        @keyframes fadeIn {
+            to {
+                opacity: 1;
+                /* Fade in */
+                transform: translateY(0);
+                /* Move into place */
+            }
+        }
+
+
+        .navbar-dark .navbar-nav .nav-link {
+            color: rgba(255, 255, 255, 0.7);
+            /* Faded white */
+            transition: color 0.3s ease;
+        }
+
+        .navbar-dark .navbar-nav .nav-link:hover {
+            color: white;
+            text-decoration: underline;
+        }
+
+        .section-title {
+            text-align: center;
+            font-size: 3rem;
+            /* Larger font size */
+            font-weight: 700;
+            /* Extra bold */
+            color: #ffffff;
+            /* White text */
+            text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.6);
+            /* Subtle shadow */
+            margin-bottom: 30px;
+            /* More spacing below */
+        }
+
+        /* Adjust the highlight for Manage NBA Teams */
+        .manage-teams-highlight {
+            background: linear-gradient(90deg, #c9082a, #17408b);
+            /* Red to Blue gradient */
+            color: #ffffff;
+            /* White text */
+            padding: 20px 50px;
+            /* Adjust padding */
+            border-radius: 50px;
+            /* More rounded corners */
+            display: inline-block;
+            box-shadow: 0px 8px 20px rgba(0, 0, 0, 0.6);
+            /* Stronger shadow for depth */
+            font-size: 2.5rem;
+            /* Larger font size */
+            margin-bottom: 20px;
+            transition: transform 0.3s ease-in-out;
+        }
+
+        .manage-teams-highlight:hover {
+            transform: scale(1.1);
+            /* Slight zoom on hover */
+        }
+
+        #teams .row.g-4 {
+            margin-top: 30px;
+            /* Space between title and cards */
+        }
+
+
+
+        .footer {
+            background: rgba(0, 0, 0, 0.9);
+            padding: 20px 0;
+            color: white;
+            text-align: center;
+        }
+
+        .footer a {
+            color: rgba(255, 255, 255, 0.7);
+            text-decoration: none;
+            margin: 0 10px;
+        }
+
+        .footer a:hover {
+            color: white;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">
+                <img src="/static/nba-logo.png" alt="NBA Logo" style="width: 40px; height: auto; margin-right: 10px;">
+                NBA Team Management
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
+                aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="#teams">Teams</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#players">Players</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#coaches-staffs">Coaches & Staffs</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#stadiums">Stadiums</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#games">Games</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#supportContainer">Support</a>
+                    </li>
+
+
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="container mt-5" id="home">
+
+        <div class="row g-4">
+            <!-- Teams -->
+            <div class="col-md-6 col-lg-4">
+                <div class="card text-center">
+
+                    <div class="card-body">
+                        <h5 class="card-title">Teams</h5>
+                        <p class="card-text">View and manage NBA teams.</p>
+                        <a href="#teams" class="btn btn-primary">Explore Teams</a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Players -->
+            <div class="col-md-6 col-lg-4">
+                <div class="card text-center">
+
+                    <div class="card-body">
+                        <h5 class="card-title">Players</h5>
+                        <p class="card-text">Add, update, and delete players.</p>
+                        <a href="#players" class="btn btn-primary">Manage Players</a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Coaches & Staffs -->
+            <div class="col-md-6 col-lg-4">
+                <div class="card text-center">
+
+                    <div class="card-body">
+                        <h5 class="card-title">Coaches & Staffs</h5>
+                        <p class="card-text">View coaching and staff information.</p>
+                        <a href="#coaches-staffs" class="btn btn-primary">View Coaches</a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stadiums -->
+            <div class="col-md-6 col-lg-4">
+                <div class="card text-center">
+
+                    <div class="card-body">
+                        <h5 class="card-title">Stadiums</h5>
+                        <p class="card-text">Explore NBA stadiums.</p>
+                        <a href="#stadiums" class="btn btn-primary">Explore Stadiums</a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Games -->
+            <div class="col-md-6 col-lg-4">
+                <div class="card text-center">
+
+                    <div class="card-body">
+                        <h5 class="card-title">Games</h5>
+                        <p class="card-text">Track NBA games and results.</p>
+                        <a href="#games" class="btn btn-primary">View Games</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+    <div style="height: 200px;"></div> <!-- Spacer -->
+
+    <!-- Teams Section -->
+    <div id="teams" class="container-fluid">
+        <h2 class="section-title">
+            <span class="manage-teams-highlight">Manage NBA Teams</span>
+        </h2>
+        <div class="container">
+            <div class="row g-4">
+                <!-- Card: View All Teams -->
+                <div class="col-md-6 col-lg-4">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h5 class="card-title">View All Teams</h5>
+                            <p class="card-text">See the list of all NBA teams.</p>
+                            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#viewAllTeamsModal"
+                                id="viewAllTeamsBtn">View Teams</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- Card: Add New Team -->
+                <div class="col-md-6 col-lg-4">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h5 class="card-title">Add New Team</h5>
+                            <p class="card-text">Add a new team to the database.</p>
+                            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addTeamModal">Add
+                                Team</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- Card: View Team Details -->
+                <div class="col-md-6 col-lg-4">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h5 class="card-title">View Team Details</h5>
+                            <p class="card-text">Get detailed information about a specific team.</p>
+                            <button class="btn btn-primary" data-bs-toggle="modal"
+                                data-bs-target="#viewTeamDetailsModal">View Details</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- Modals -->
+    <!-- Modal: View All Teams -->
+    <div class="modal fade" id="viewAllTeamsModal" tabindex="-1" aria-labelledby="viewAllTeamsModalLabel"
+        aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="viewAllTeamsModalLabel">All Teams</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="allTeams">
+                    <!-- Teams list will be dynamically loaded here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- Modal: Add New Team -->
+    <div class="modal fade" id="addTeamModal" tabindex="-1" aria-labelledby="addTeamModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="addTeamModalLabel">Add New Team</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="addTeamForm">
+                        <div class="mb-3">
+                            <label for="teamId" class="form-label">Team ID</label>
+                            <input type="number" id="teamId" class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="teamName" class="form-label">Team Name</label>
+                            <input type="text" id="teamName" class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="teamRevenue" class="form-label">Revenue</label>
+                            <input type="number" id="teamRevenue" class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="stadiumId" class="form-label">Stadium ID</label>
+                            <input type="number" id="teamstadiumId" class="form-control" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Add Team</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: View Team Details -->
+    <div class="modal fade" id="viewTeamDetailsModal" tabindex="-1" aria-labelledby="viewTeamDetailsModalLabel"
+        aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="viewTeamDetailsModalLabel">Team Details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="teamNameSearch" class="form-label">Enter Team Name</label>
+                        <input type="text" class="form-control" id="teamNameSearch" required>
+                    </div>
+                    <button id="getTeamDetailsBtn" class="btn btn-primary">Get Details</button>
+                    <div id="teamDetails" class="mt-3">
+                        <!-- Team details will be dynamically loaded here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="players" class="container-fluid">
+        <h2 class="section-title">
+            <span class="manage-teams-highlight">Manage NBA Players</span>
+        </h2>
+        <div class="container">
+            <div class="row g-4">
+                <!-- Card: See All Players -->
+                <div class="col-md-6 col-lg-4">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h5 class="card-title">See All Players</h5>
+                            <p class="card-text">View the list of all NBA players.</p>
+                            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#viewAllPlayersModal"
+                                id="viewAllPlayersBtn">View Players</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- Card: Add New Player -->
+                <div class="col-md-6 col-lg-4">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h5 class="card-title">Add New Player</h5>
+                            <p class="card-text">Add a new player to a team.</p>
+                            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addPlayerModal">Add
+                                Player</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- Card: Search Player Details -->
+                <div class="col-md-6 col-lg-4">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h5 class="card-title">Search Player</h5>
+                            <p class="card-text">Find detailed information about a player.</p>
+                            <button class="btn btn-primary" data-bs-toggle="modal"
+                                data-bs-target="#searchPlayerModal">Search Player</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- Card: Delete Player -->
+                <div class="col-md-6 col-lg-4">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h5 class="card-title">Delete Player</h5>
+                            <p class="card-text">Remove a player from the database.</p>
+                            <button class="btn btn-primary" data-bs-toggle="modal"
+                                data-bs-target="#deletePlayerModal">Delete Player</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+
+    <!-- Modal: View All Players -->
+    <div class="modal fade" id="viewAllPlayersModal" tabindex="-1" aria-labelledby="viewAllPlayersModalLabel"
+        aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="viewAllPlayersModalLabel">All Players</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="allPlayers">
+                    <!-- Players list will be dynamically loaded here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- Modal: Add Player -->
+    <div class="modal fade" id="addPlayerModal" tabindex="-1" aria-labelledby="addPlayerModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="addPlayerModalLabel">Add New Player</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="addPlayerForm">
+                        <div class="mb-3">
+                            <label for="playerName" class="form-label">Player Name</label>
+                            <input type="text" class="form-control" id="playerName" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="playerAge" class="form-label">Age</label>
+                            <input type="number" class="form-control" id="playerAge" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="playerSalary" class="form-label">Salary</label>
+                            <input type="number" class="form-control" id="playerSalary" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="playerJerseyNumber" class="form-label">Jersey Number</label>
+                            <input type="number" class="form-control" id="playerJerseyNumber" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="playerPosition" class="form-label">Position</label>
+                            <input type="text" class="form-control" id="playerPosition" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="playerTeamId" class="form-label">Team ID</label>
+                            <input type="number" class="form-control" id="playerTeamId" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Add Player</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Search Player -->
+    <div class="modal fade" id="searchPlayerModal" tabindex="-1" aria-labelledby="searchPlayerModalLabel"
+        aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="searchPlayerModalLabel">Search Player</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="searchPlayerName" class="form-label">Enter Player Name</label>
+                        <input type="text" class="form-control" id="searchPlayerName" required>
+                    </div>
+                    <button id="searchPlayerBtn" class="btn btn-primary">Search</button>
+                    <div id="playerDetails" class="mt-3">
+                        <!-- Player details will be dynamically loaded here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Delete Player -->
+    <div class="modal fade" id="deletePlayerModal" tabindex="-1" aria-labelledby="deletePlayerModalLabel"
+        aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="deletePlayerModalLabel">Delete Player</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="deletePlayerId" class="form-label">Enter Player Employee ID</label>
+                        <input type="number" class="form-control" id="deletePlayerId" required>
+                    </div>
+                    <button id="deletePlayerBtn" class="btn btn-primary">Delete Player</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="coaches-staffs" class="container-fluid">
+        <h2 class="section-title">
+            <span class="manage-teams-highlight">Manage Coaches</span>
+        </h2>
+        <div class="container">
+            <div class="row g-4">
+                <!-- Card: See All Coaches -->
+                <div class="col-md-6 col-lg-4">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h5 class="card-title">See All Coaches</h5>
+                            <p class="card-text">View the list of all NBA coaches.</p>
+                            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#viewAllCoachesModal"
+                                id="viewAllCoachesBtn">
+                                View Coaches
+                            </button>
+
+                        </div>
+                    </div>
+                </div>
+                <!-- Card: Add New Coach -->
+                <div class="col-md-6 col-lg-4">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h5 class="card-title">Add New Coach</h5>
+                            <p class="card-text">Add a new coach to the database.</p>
+                            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addCoachModal">Add
+                                Coach</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- Card: Search Coach -->
+                <div class="col-md-6 col-lg-4">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h5 class="card-title">Search Coach</h5>
+                            <p class="card-text">Search for a specific coach by name.</p>
+                            <button class="btn btn-primary" data-bs-toggle="modal"
+                                data-bs-target="#searchCoachModal">Search
+                                Coach</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- Card: Delete Coach -->
+                <div class="col-md-6 col-lg-4">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h5 class="card-title">Delete Coach</h5>
+                            <p class="card-text">Remove a coach from the database.</p>
+                            <button class="btn btn-primary" data-bs-toggle="modal"
+                                data-bs-target="#deleteCoachModal">Delete
+                                Coach</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal fade" id="addCoachModal" tabindex="-1" aria-labelledby="addCoachModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="addCoachModalLabel">Add New Coach</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="addCoachForm">
+                        <div class="mb-3">
+                            <label for="coachName" class="form-label">Name</label>
+                            <input type="text" id="coachName" class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="coachAge" class="form-label">Age</label>
+                            <input type="number" id="coachAge" class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="coachEmployeeId" class="form-label">Employee ID</label>
+                            <input type="number" id="coachEmployeeId" class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="coachSalary" class="form-label">Salary</label>
+                            <input type="number" id="coachSalary" class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="coachRole" class="form-label">Role</label>
+                            <input type="text" id="coachRole" class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="coachExperienceYears" class="form-label">Experience (Years)</label>
+                            <input type="number" id="coachExperienceYears" class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="coachTeamId" class="form-label">Team ID</label>
+                            <input type="number" id="coachTeamId" class="form-control" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Add Coach</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Modal: Search Coach -->
+    <div class="modal fade" id="searchCoachModal" tabindex="-1" aria-labelledby="searchCoachModalLabel"
+        aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="searchCoachModalLabel">Search Coach</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="searchCoachInput" class="form-label">Enter Coach Name</label>
+                        <input type="text" id="searchCoachInput" class="form-control" required>
+                    </div>
+                    <button id="searchCoachBtn" class="btn btn-primary">Search</button>
+                    <div id="searchCoachResult" class="mt-3">
+                        <!-- Search results will appear here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Modal: Delete Coach -->
+    <div class="modal fade" id="deleteCoachModal" tabindex="-1" aria-labelledby="deleteCoachModalLabel"
+        aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="deleteCoachModalLabel">Delete Coach</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="deleteCoachId" class="form-label">Enter Coach Employee ID</label>
+                        <input type="number" id="deleteCoachId" class="form-control" required>
+                    </div>
+                    <button id="deleteCoachBtn" class="btn btn-danger">Delete Coach</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Modal: View All Coaches -->
+    <div class="modal fade" id="viewAllCoachesModal" tabindex="-1" aria-labelledby="viewAllCoachesModalLabel"
+        aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="viewAllCoachesModalLabel">All Coaches</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="allCoaches">
+                    <!-- Coaches list will be dynamically loaded here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+
+    <div id="staff" class="container-fluid">
+        <h2 class="section-title">
+            <span class="manage-teams-highlight">Manage Staff</span>
+        </h2>
+        <div class="container">
+            <div class="row g-4">
+                <!-- Card: See All Staff -->
+                <div class="col-md-6 col-lg-4">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h5 class="card-title">See All Staff</h5>
+                            <p class="card-text">View the list of all NBA staff members.</p>
+                            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#viewAllStaffModal"
+                                id="viewAllStaffBtn">
+                                View Staffs
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <!-- Card: Add New Staff -->
+                <div class="col-md-6 col-lg-4">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h5 class="card-title">Add New Staff</h5>
+                            <p class="card-text">Add a new staff member to the database.</p>
+                            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addStaffModal">Add
+                                Staff</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- Card: Search Staff -->
+                <div class="col-md-6 col-lg-4">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h5 class="card-title">Search Staff</h5>
+                            <p class="card-text">Search for a specific staff member by name.</p>
+                            <button class="btn btn-primary" data-bs-toggle="modal"
+                                data-bs-target="#searchStaffModal">Search
+                                Staff</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- Card: Delete Staff -->
+                <div class="col-md-6 col-lg-4">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h5 class="card-title">Delete Staff</h5>
+                            <p class="card-text">Remove a staff member from the database.</p>
+                            <button class="btn btn-primary" data-bs-toggle="modal"
+                                data-bs-target="#deleteStaffModal">Delete
+                                Staff</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Modal: Search Staff -->
+    <div class="modal fade" id="searchStaffModal" tabindex="-1" aria-labelledby="searchStaffModalLabel"
+        aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="searchStaffModalLabel">Search Staff</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="searchStaffInput" class="form-label">Enter Staff Name</label>
+                        <input type="text" id="searchStaffInput" class="form-control" required>
+                    </div>
+                    <button id="searchStaffBtn" class="btn btn-primary">Search</button>
+                    <div id="searchStaffResult" class="mt-3">
+                        <!-- Search results will appear here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Modal: Delete Staff -->
+    <div class="modal fade" id="deleteStaffModal" tabindex="-1" aria-labelledby="deleteStaffModalLabel"
+        aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="deleteStaffModalLabel">Delete Staff</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="deleteStaffId" class="form-label">Enter Staff Employee ID</label>
+                        <input type="number" id="deleteStaffId" class="form-control" required>
+                    </div>
+                    <button id="deleteStaffBtn" class="btn btn-danger">Delete Staff</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Modal: View All Staff -->
+    <div class="modal fade" id="viewAllStaffModal" tabindex="-1" aria-labelledby="viewAllStaffModalLabel"
+        aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="viewAllStaffModalLabel">All Staff Members</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="allStaff">
+                    <!-- Staff list will be dynamically loaded here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="addStaffModal" tabindex="-1" aria-labelledby="addStaffModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="addStaffModalLabel">Add New Staff Member</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="addStaffForm">
+                        <!-- Name -->
+                        <div class="mb-3">
+                            <label for="staffName" class="form-label">Name</label>
+                            <input type="text" id="staffName" class="form-control" required>
+                        </div>
+
+                        <!-- Age -->
+                        <div class="mb-3">
+                            <label for="staffAge" class="form-label">Age</label>
+                            <input type="number" id="staffAge" class="form-control" required>
+                        </div>
+
+                        <!-- Employee ID -->
+                        <div class="mb-3">
+                            <label for="staffEmployeeId" class="form-label">Employee ID</label>
+                            <input type="number" id="staffEmployeeId" class="form-control" required>
+                        </div>
+
+                        <!-- Salary -->
+                        <div class="mb-3">
+                            <label for="staffSalary" class="form-label">Salary</label>
+                            <input type="number" id="staffSalary" class="form-control" required>
+                        </div>
+
+                        <!-- Job Title -->
+                        <div class="mb-3">
+                            <label for="staffJobTitle" class="form-label">Job Title</label>
+                            <input type="text" id="staffJobTitle" class="form-control" required>
+                        </div>
+
+                        <!-- Team ID -->
+                        <div class="mb-3">
+                            <label for="staffTeamId" class="form-label">Team ID</label>
+                            <input type="number" id="staffTeamId" class="form-control" required>
+                        </div>
+
+                        <!-- Submit Button -->
+                        <button type="submit" class="btn btn-primary">Add Staff</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Stadiums Section -->
+    <div id="stadiums" class="container-fluid">
+        <h2 class="section-title">
+            <span class="manage-teams-highlight">Manage NBA Stadiums</span>
+        </h2>
+        <div class="container">
+            <div class="row g-4">
+                <!-- Card: See All Stadiums -->
+                <div class="col-md-6 col-lg-4">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h5 class="card-title">See All Stadiums</h5>
+                            <p class="card-text">View the list of all NBA stadiums.</p>
+                            <button class="btn btn-primary" data-bs-toggle="modal"
+                                data-bs-target="#viewAllStadiumsModal" id="viewAllStadiumsBtn">
+                                View Stadiums
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <!-- Card: Add New Stadium -->
+                <div class="col-md-6 col-lg-4">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h5 class="card-title">Add New Stadium</h5>
+                            <p class="card-text">Add a new stadium to the database.</p>
+                            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addStadiumModal">Add
+                                Stadium</button>
+                        </div>
+                    </div>
+                </div>
+
+
+            </div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+
+    <!-- Modal: View All Stadiums -->
+    <div class="modal fade" id="viewAllStadiumsModal" tabindex="-1" aria-labelledby="viewAllStadiumsModalLabel"
+        aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="viewAllStadiumsModalLabel">All Stadiums</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="allStadiums">
+                    <!-- Stadiums list will be dynamically loaded here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- Modal: Add Stadium -->
+    <div class="modal fade" id="addStadiumModal" tabindex="-1" aria-labelledby="addStadiumModalLabel"
+        aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="addStadiumModalLabel">Add New Stadium</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="addStadiumForm">
+                        <div class="mb-3">
+                            <label for="stadiumIdField" class="form-label">Stadium ID</label>
+                            <input type="number" id="stadiumIdField" class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="stadiumNameField" class="form-label">Stadium Name</label>
+                            <input type="text" id="stadiumNameField" class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="stadiumLocationField" class="form-label">Location</label>
+                            <input type="text" id="stadiumLocationField" class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="stadiumCapacityField" class="form-label">Capacity</label>
+                            <input type="number" id="stadiumCapacityField" class="form-control" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Add Stadium</button>
+                    </form>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Games Section -->
+    <div id="games" class="container-fluid">
+        <h2 class="section-title">
+            <span class="manage-teams-highlight">Manage NBA Games</span>
+        </h2>
+        <div class="container">
+            <div class="row g-4">
+                <!-- Card: View All Games -->
+                <div class="col-md-6 col-lg-4">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h5 class="card-title">See All Games</h5>
+                            <p class="card-text">View the list of all NBA games.</p>
+                            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#viewAllGamesModal"
+                                id="viewAllGamesBtn">
+                                View Games
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <!-- Card: Add New Game -->
+                <div class="col-md-6 col-lg-4">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h5 class="card-title">Add New Game</h5>
+                            <p class="card-text">Add a new game to the database.</p>
+                            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addGameModal">
+                                Add Game
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: View All Games -->
+    <div class="modal fade" id="viewAllGamesModal" tabindex="-1" aria-labelledby="viewAllGamesModalLabel"
+        aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="viewAllGamesModalLabel">All Games</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="allGames">
+                    <!-- Games list will be dynamically loaded here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Add Game -->
+    <div class="modal fade" id="addGameModal" tabindex="-1" aria-labelledby="addGameModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="addGameModalLabel">Add New Game</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="addGameForm">
+                        <div class="mb-3">
+                            <label for="gameIdField" class="form-label">Game ID</label>
+                            <input type="number" id="gameIdField" class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="gameDateField" class="form-label">Date</label>
+                            <input type="date" id="gameDateField" class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="gameScoreField" class="form-label">Score</label>
+                            <input type="text" id="gameScoreField" class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="gameOpponentField" class="form-label">Opponent</label>
+                            <input type="text" id="gameOpponentField" class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="gameStadiumIdField" class="form-label">Stadium ID</label>
+                            <input type="number" id="gameStadiumIdField" class="form-control" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Add Game</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal fade" id="signUpModal" tabindex="-1" aria-labelledby="signUpModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="signUpModalLabel">Sign Up</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="signUpForm">
+                        <div class="mb-3">
+                            <label for="signUpEmail" class="form-label">Email</label>
+                            <input type="email" id="signUpEmail" class="form-control" placeholder="Enter your email"
+                                required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="signUpPassword" class="form-label">Password</label>
+                            <input type="password" id="signUpPassword" class="form-control"
+                                placeholder="Enter your password" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100">Sign Up</button>
+                        <p class="mt-3 text-danger" id="signUpError"></p>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal fade" id="loginModal" tabindex="-1" aria-labelledby="loginModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="loginModalLabel">Log In</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="loginForm">
+                        <div class="mb-3">
+                            <label for="loginEmail" class="form-label">Email</label>
+                            <input type="email" id="loginEmail" class="form-control" placeholder="Enter your email"
+                                required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="loginPassword" class="form-label">Password</label>
+                            <input type="password" id="loginPassword" class="form-control"
+                                placeholder="Enter your password" required>
+                        </div>
+                        <button type="submit" class="btn btn-secondary w-100">Log In</button>
+                        <p class="mt-3 text-danger" id="loginError"></p>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="logoutContainer" class="d-flex justify-content-center align-items-center vh-1"
+        style="display: none; background-color: #fff; padding-top: 50px;">
+        <button id="logoutButton" class="btn btn-primary">Logout</button>
+    </div>
+
+
+
+    <div style="background-color: #fff; padding-top: 10px; padding-bottom: 10px;">
+        <div id="supportContainer" class="container-fluid mt-5">
+            <!-- Login Prompt -->
+            <div id="loginPrompt"
+                style="text-align: center; background-color: #fff; justify-content: center; padding-bottom: 100px;">
+                <h2>You can register, log in or continue as a guest to use support </h2>
+                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#signUpModal">Register</button>
+                <button class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#loginModal">Log In</button>
+                <button id="guestButton" class="btn btn-secondary">Continue as Guest</button>
+
+            </div>
+
+            <!-- Support Form -->
+            <div id="support" style="display: none;">
+                <h2>Support</h2>
+                <form id="supportForm">
+                    <div class="mb-3">
+                        <label for="supportName" class="form-label">Name</label>
+                        <input type="text" id="supportName" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="supportCategory" class="form-label">Category</label>
+                        <select id="supportCategory" class="form-control" required>
+                            <option value="Missing Information">Missing Information</option>
+                            <option value="Incorrect Information">Incorrect Information</option>
+                            <option value="Access Issues">Access Issues</option>
+                            <option value="Feedback and Suggestions">Feedback and Suggestions</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="supportMessage" class="form-label">Message</label>
+                        <textarea id="supportMessage" class="form-control" rows="5"
+                            placeholder="Please provide details..." required></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Submit</button>
+                </form>
+            </div>
+            <div id="messageDisplayContainer"
+                style="margin-top: 20px; background-color: #fff; padding: 20px; width: 90%; max-width: 600px; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); border-radius: 10px; display: flex; flex-direction: column; gap: 10px; margin: 50px auto;">
+                <div id="messagesContainer"
+                    style="flex: 1; overflow-y: auto; max-height: 400px; padding: 10px; border: 1px solid #ddd; border-radius: 10px;">
+                    <!-- Chat messages will be dynamically appended here -->
+                </div>
+                <form id="chatForm" style="display: flex; gap: 10px; align-items: center;">
+                    <input type="text" id="chatMessageInput" class="form-control" placeholder="Type your message..."
+                        required>
+                    <button type="submit" class="btn btn-primary">Send</button>
+                </form>
+            </div>
+
+
+        </div>
+    </div>
+
+    <div id="adminContainer"
+        style="display: none; background-color: #fff; padding-left: 20px; padding-right: 20px; padding-bottom: 20px; ">
+        <h3 style="justify-content: center; align-items: center; display: flex;">Admin Panel</h3>
+        <label for="selectUserDropdown">Select User:</label>
+        <select id="selectUserDropdown" class="form-control">
+            <option value="" disabled selected>Loading users...</option>
+        </select>
+
+        <!-- Message History Section -->
+        <div id="adminMessagesContainer"
+            style="margin-top: 20px; max-height: 400px; overflow-y: auto; padding: 10px; border: 1px solid #ccc; border-radius: 8px; background-color: #f9f9f9;">
+            <!-- Messages will be dynamically loaded here -->
+            <p class="text-muted">Select a user to view their messages.</p>
+        </div>
+
+        <!-- Chat Input Section -->
+        <form id="adminChatForm" style="display: flex; gap: 10px; align-items: center; margin-top: 20px;">
+            <input type="text" id="adminMessageInput" class="form-control" placeholder="Type your message..." required>
+            <button type="submit" class="btn btn-primary">Send</button>
+        </form>
+    </div>
+
+
+
+
+
+
+
+
+    <footer class="footer">
+        <div class="container text-center">
+            <p>© This page created for CS306 Project. Created by:</p>
+            <p>
+                <a href="#" class="footer-link">Çağla Güzel</a> |
+                <a href="#" class="footer-link">Enes Çağlar</a>
+            </p>
+        </div>
+    </footer>
+
+
+
+
+
+    <!-- JavaScript -->
+    <script>
+
+
+
+
+        document.getElementById('getTeamDetailsBtn').addEventListener('click', async () => {
+            const teamName = document.getElementById('teamNameSearch').value;
+            if (!teamName) {
+                alert("Please enter a team name.");
+                return;
+            }
+
+            try {
+                const response = await fetch(`/get-team-details/${teamName}`);
+                if (!response.ok) {
+                    const error = await response.json();
+                    document.getElementById('teamDetails').innerHTML = `<p class="text-danger">${error.error || "Error fetching team details"}</p>`;
+                    return;
+                }
+
+                const result = await response.json();
+
+                let output = `<h3>Team Name: ${result.team?.team_name || 'No team found'}</h3>`;
+                output += `<p>Revenue: $${result.team?.revenue || 'N/A'}</p>`;
+
+                output += `<h4>Stadium:</h4>`;
+                if (result.stadium) {
+                    output += `
+                <p>Name: ${result.stadium.stadium_name}</p>
+                <p>Location: ${result.stadium.location}</p>
+                <p>Capacity: ${result.stadium.capacity}</p>
+            `;
+                } else {
+                    output += `<p>No stadium information available.</p>`;
+                }
+
+                output += `<h4>Players:</h4><ul>`;
+                result.players.forEach(player => {
+                    output += `<li>${player.player_name} - ${player.position}, $${player.salary}</li>`;
+                });
+                output += `</ul>`;
+
+                output += `<h4>Coaches:</h4><ul>`;
+                result.coaches.forEach(coach => {
+                    output += `<li>${coach.coach_name} - ${coach.coaching_role}, $${coach.salary}</li>`;
+                });
+                output += `</ul>`;
+
+                output += `<h4>Staff:</h4><ul>`;
+                result.staff.forEach(staff => {
+                    output += `<li>${staff.staff_name} - ${staff.job_title}, $${staff.salary}</li>`;
+                });
+                output += `</ul>`;
+
+
+                document.getElementById('teamDetails').innerHTML = output;
+            } catch (error) {
+                console.error("Error fetching team details:", error);
+                document.getElementById('teamDetails').innerHTML = `<p class="text-danger">Error fetching team details. Please try again later.</p>`;
+            }
+        });
+
+        document.getElementById('viewAllTeamsBtn').addEventListener('click', async () => {
+            try {
+                const response = await fetch('/get-all-teams', {
+                    method: 'GET',
+                    headers: {
+                        'Cache-Control': 'no-cache', // Prevent browser caching
+                        'Pragma': 'no-cache'
+                    }
+                });
+
+                if (!response.ok) {
+                    document.getElementById('allTeams').innerHTML = `<p class="text-danger">Error fetching teams. Please try again later.</p>`;
+                    return;
+                }
+
+                const teams = await response.json();
+
+                if (teams.length === 0) {
+                    document.getElementById('allTeams').innerHTML = `<p class="text-warning">No teams available.</p>`;
+                    return;
+                }
+
+                let output = `<table class="table table-bordered table-striped">
+            <thead>
+                <tr>
+                    <th>Team ID</th>
+                    <th>Team Name</th>
+                    <th>Revenue</th>
+                    <th>Stadium Name</th>
+                </tr>
+            </thead>
+            <tbody>`;
+
+                teams.forEach(team => {
+                    output += `
+                <tr>
+                    <td>${team.team_id}</td>
+                    <td>${team.team_name}</td>
+                    <td>$${team.revenue}</td>
+                    <td>${team.stadium_name || 'N/A'}</td>
+                </tr>`;
+                });
+
+                output += `</tbody></table>`;
+                document.getElementById('allTeams').innerHTML = output;
+            } catch (error) {
+                console.error("Error fetching teams:", error);
+                document.getElementById('allTeams').innerHTML = `<p class="text-danger">Error fetching teams. Please try again later.</p>`;
+            }
+        });
+
+
+
+        document.getElementById('addTeamForm').addEventListener('submit', async (event) => {
+            event.preventDefault();
+
+            const data = {
+                team_id: document.getElementById('teamId').value,
+                team_name: document.getElementById('teamName').value,
+                revenue: document.getElementById('teamRevenue').value,
+                stadium_id: document.getElementById('teamstadiumId').value
+            };
+
+            try {
+                const response = await fetch('/add-team', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    alert(`Team added successfully!\nLog: ${result.log}`);
+                    document.getElementById('addTeamForm').reset();
+                } else {
+                    const error = await response.text();
+                    alert(`Error adding team: ${error}`);
+                }
+            } catch (error) {
+                console.error("Error:", error);
+                alert("An error occurred while adding the team.");
+            }
+        });
+
+        document.getElementById('viewAllPlayersBtn').addEventListener('click', async () => {
+            try {
+                const response = await fetch('/get-all-players'); // Endpoint to fetch all players
+                if (!response.ok) {
+                    document.getElementById('allPlayers').innerHTML = `<p class="text-danger">Error fetching players. Please try again later.</p>`;
+                    return;
+                }
+
+                const players = await response.json();
+
+                if (players.length === 0) {
+                    document.getElementById('allPlayers').innerHTML = `<p class="text-warning">No players available.</p>`;
+                    return;
+                }
+
+                let output = `<table class="table table-bordered table-striped">
+            <thead>
+                <tr>
+                    <th>Employee ID</th>
+                    <th>Player Name</th>
+                    <th>Age</th>
+                    <th>Salary</th>
+                    <th>Jersey Number</th>
+                    <th>Position</th>
+                    <th>Team ID</th>
+                </tr>
+            </thead>
+            <tbody>`;
+
+                players.forEach(player => {
+                    output += `
+                <tr>
+                    <td>${player.employee_id}</td>
+                    <td>${player.player_name}</td>
+                    <td>${player.age}</td>
+                    <td>$${player.salary}</td>
+                    <td>${player.jersey_number}</td>
+                    <td>${player.position}</td>
+                    <td>${player.team_id}</td>
+                </tr>`;
+                });
+
+                output += `</tbody></table>`;
+                document.getElementById('allPlayers').innerHTML = output;
+            } catch (error) {
+                console.error("Error fetching players:", error);
+                document.getElementById('allPlayers').innerHTML = `<p class="text-danger">Error fetching players. Please try again later.</p>`;
+            }
+        });
+        // Event listener for "View All Coaches"
+        document.getElementById('viewAllCoachesBtn').addEventListener('click', async () => {
+            try {
+                // Fetch coaches from the backend
+                const response = await fetch('/get-all-coaches'); // Make sure the route matches your Flask backend
+                if (!response.ok) {
+                    throw new Error('Failed to fetch coaches. Please check the backend API.');
+                }
+
+                // Parse the response JSON
+                const coaches = await response.json();
+                console.log('Fetched coaches:', coaches); // Debugging log
+
+                // Select the modal body to insert coaches
+                const coachesContainer = document.getElementById('allCoaches'); // Modal body ID
+                if (!coachesContainer) {
+                    console.error('No container for coaches in modal.');
+                    return;
+                }
+
+                // Check if coaches list is empty
+                if (coaches.length === 0) {
+                    coachesContainer.innerHTML = `<p class="text-warning">No coaches available.</p>`;
+                } else {
+                    // Build HTML table dynamically
+                    let output = `<table class="table table-bordered table-striped">
+            <thead>
+                <tr>
+                    <th>Employee ID</th>
+                    <th>Name</th>
+                    <th>Age</th>
+                    <th>Salary</th>
+                    <th>Role</th>
+                    <th>Experience (Years)</th>
+                    <th>Team ID</th>
+                </tr>
+            </thead>
+            <tbody>`;
+
+                    // Loop through each coach and add rows to the table
+                    coaches.forEach(coach => {
+                        output += `
+                <tr>
+                    <td>${coach.employee_id}</td>
+                    <td>${coach.coach_name}</td>
+                    <td>${coach.age}</td>
+                    <td>$${coach.salary}</td>
+                    <td>${coach.coaching_role}</td>
+                    <td>${coach.experience_years}</td>
+                    <td>${coach.team_id}</td>
+                </tr>`;
+                    });
+
+                    // Close the table HTML
+                    output += `</tbody></table>`;
+
+                    // Inject the HTML into the modal body
+                    coachesContainer.innerHTML = output;
+                }
+            } catch (error) {
+                // Log and display error messages
+                console.error('Error fetching coaches:', error);
+                const coachesContainer = document.getElementById('allCoaches');
+                if (coachesContainer) {
+                    coachesContainer.innerHTML = `<p class="text-danger">Error fetching coaches. Please try again later.</p>`;
+                }
+            }
+        });
+
+
+
+        document.getElementById('addPlayerForm').addEventListener('submit', async (event) => {
+            event.preventDefault();
+
+            const data = {
+                name: document.getElementById('playerName').value,
+                age: document.getElementById('playerAge').value,
+                employeeId: Math.floor(Math.random() * 100000), // Generate a random employee ID
+                salary: document.getElementById('playerSalary').value,
+                jersey_number: document.getElementById('playerJerseyNumber').value,
+                position: document.getElementById('playerPosition').value,
+                team_id: document.getElementById('playerTeamId').value
+            };
+
+            try {
+                const response = await fetch('/add-player', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    alert(`Player added successfully!\nLog: ${result.log}`);
+                    document.getElementById('addPlayerForm').reset();
+                } else {
+                    const error = await response.text();
+                    alert(`Error adding player: ${error}`);
+                }
+            } catch (error) {
+                console.error("Error:", error);
+                alert("An error occurred while adding the player.");
+            }
+        });
+
+
+
+        // Event listener for "Search Player"
+        document.getElementById('searchPlayerBtn').addEventListener('click', async () => {
+            const playerName = document.getElementById('searchPlayerName').value;
+
+            if (!playerName) {
+                alert("Please enter a player name.");
+                return;
+            }
+
+            try {
+                const response = await fetch(`/get-player-details/${playerName}`);
+                if (!response.ok) {
+                    const error = await response.json();
+                    document.getElementById('playerDetails').innerHTML = `<p class="text-danger">${error.error || "Error fetching player details"}</p>`;
+                    return;
+                }
+
+                const player = await response.json();
+
+                let output = `<h3>Player Name: ${player.player_name}</h3>`;
+                output += `<p>Age: ${player.age}</p>`;
+                output += `<p>Salary: $${player.salary}</p>`;
+                output += `<p>Jersey Number: ${player.jersey_number}</p>`;
+                output += `<p>Position: ${player.position}</p>`;
+                output += `<p>Team: ${player.team_name}</p>`;
+
+                document.getElementById('playerDetails').innerHTML = output;
+            } catch (error) {
+                console.error("Error fetching player details:", error);
+                document.getElementById('playerDetails').innerHTML = `<p class="text-danger">Error fetching player details. Please try again later.</p>`;
+            }
+        });
+
+        // Event listener for "Delete Player"
+        document.getElementById('deletePlayerBtn').addEventListener('click', async () => {
+            const playerId = parseInt(document.getElementById('deletePlayerId').value);
+
+            if (!playerId) {
+                alert("Please enter a player Employee ID.");
+                return;
+            }
+
+            try {
+                const response = await fetch(`/delete-player/${playerId}`, {
+                    method: 'DELETE'
+                });
+
+                const result = await response.text();
+
+                if (response.ok) {
+                    alert("Player deleted successfully!");
+                } else {
+                    alert(`Error deleting player: ${result}`);
+                }
+            } catch (error) {
+                console.error("Error deleting player:", error);
+                alert("An error occurred while deleting the player. Please try again later.");
+            }
+        });
+        document.getElementById('viewAllStaffBtn').addEventListener('click', async () => {
+            try {
+                const response = await fetch('/get-all-staff'); // Ensure this matches the Flask route
+                if (!response.ok) {
+                    throw new Error('Failed to fetch staff members. Please check the backend API.');
+                }
+
+                const staff = await response.json();
+                console.log('Fetched staff:', staff); // Debugging log
+
+                const staffContainer = document.getElementById('allStaff'); // Modal body
+                if (!staffContainer) {
+                    console.error('No container for staff in modal.');
+                    return;
+                }
+
+                if (staff.length === 0) {
+                    staffContainer.innerHTML = `<p class="text-warning">No staff members available.</p>`;
+                } else {
+                    let output = `<table class="table table-bordered table-striped">
+            <thead>
+                <tr>
+                    <th>Employee ID</th>
+                    <th>Name</th>
+                    <th>Age</th>
+                    <th>Salary</th>
+                    <th>Job Title</th>
+                    <th>Team ID</th>
+                </tr>
+            </thead>
+            <tbody>`;
+
+                    staff.forEach(member => {
+                        output += `
+                <tr>
+                    <td>${member.employee_id}</td>
+                    <td>${member.staff_name}</td>
+                    <td>${member.age}</td>
+                    <td>$${member.salary}</td>
+                    <td>${member.job_title}</td>
+                    <td>${member.team_id}</td>
+                </tr>`;
+                    });
+
+                    output += `</tbody></table>`;
+                    staffContainer.innerHTML = output;
+                }
+            } catch (error) {
+                console.error('Error fetching staff members:', error);
+            }
+        });
+
+
+
+
+
+
+        document.getElementById('addCoachForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const data = {
+                name: document.getElementById('coachName').value,
+                age: parseInt(document.getElementById('coachAge').value),
+                employee_id: parseInt(document.getElementById('coachEmployeeId').value),
+                salary: parseInt(document.getElementById('coachSalary').value),
+                role: document.getElementById('coachRole').value,
+                experience_years: parseInt(document.getElementById('coachExperienceYears').value),
+                team_id: parseInt(document.getElementById('coachTeamId').value),
+            };
+
+            try {
+                const response = await fetch('/add-coach', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data),
+                });
+
+                if (response.ok) {
+                    alert('Coach added successfully!');
+                    document.getElementById('addCoachForm').reset();
+                } else {
+                    const error = await response.text();
+                    alert(`Error adding coach: ${error}`);
+                }
+            } catch (err) {
+                alert(`Error adding coach: ${err}`);
+            }
+        });
+
+
+
+        document.getElementById('deleteCoachBtn').addEventListener('click', async () => {
+            const employeeId = document.getElementById('deleteCoachId').value;
+
+            if (!employeeId) {
+                alert("Please enter a valid Coach Employee ID.");
+                return;
+            }
+
+            try {
+                const response = await fetch(`/delete-coach/${employeeId}`, { method: 'DELETE' });
+
+                if (response.ok) {
+                    alert("Coach deleted successfully!");
+                    document.getElementById('deleteCoachId').value = ""; // Clear the input field
+                } else {
+                    const error = await response.text();
+                    alert(`Error deleting coach: ${error}`);
+                }
+            } catch (err) {
+                console.error("Error deleting coach:", err);
+                alert("An error occurred while deleting the coach. Please try again later.");
+            }
+        });
+
+
+        document.getElementById('deleteStaffBtn').addEventListener('click', async () => {
+            const employeeId = document.getElementById('deleteStaffId').value;
+
+            if (!employeeId) {
+                alert("Please enter a valid Staff Employee ID.");
+                return;
+            }
+
+            try {
+                const response = await fetch(`/delete-staff/${employeeId}`, { method: 'DELETE' });
+
+                if (response.ok) {
+                    alert("Staff member deleted successfully!");
+                    document.getElementById('deleteStaffId').value = ""; // Clear the input field
+                } else {
+                    const error = await response.text();
+                    alert(`Error deleting staff member: ${error}`);
+                }
+            } catch (err) {
+                console.error("Error deleting staff member:", err);
+                alert("An error occurred while deleting the staff member. Please try again later.");
+            }
+        });
+
+        document.getElementById('searchCoachBtn').addEventListener('click', async () => {
+            const coachName = document.getElementById('searchCoachInput').value;
+            if (!coachName) {
+                alert('Please enter a coach name.');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/search-coach/${coachName}`);
+                if (!response.ok) {
+                    throw new Error('Failed to fetch coach details');
+                }
+
+                const coaches = await response.json();
+
+                // Check if coaches are found
+                if (coaches.length === 0) {
+                    document.getElementById('searchCoachResult').innerHTML = `<p class="text-warning">No coach found with the name "${coachName}".</p>`;
+                    return;
+                }
+
+                // Generate HTML for displaying coaches
+                let output = `<table class="table table-bordered table-striped">
+            <thead>
+                <tr>
+                    <th>Employee ID</th>
+                    <th>Name</th>
+                    <th>Age</th>
+                    <th>Role</th>
+                    <th>Experience (Years)</th>
+                    <th>Salary</th>
+                </tr>
+            </thead>
+            <tbody>`;
+
+                coaches.forEach(coach => {
+                    output += `
+                <tr>
+                    <td>${coach.employee_id}</td>
+                    <td>${coach.coach_name}</td>
+                    <td>${coach.age}</td>
+                    <td>${coach.coaching_role}</td>
+                    <td>${coach.experience_years}</td>
+                    <td>$${coach.salary}</td>
+                </tr>`;
+                });
+
+                output += `</tbody></table>`;
+                document.getElementById('searchCoachResult').innerHTML = output;
+
+            } catch (err) {
+                console.error(err);
+                document.getElementById('searchCoachResult').innerHTML = `<p class="text-danger">Error fetching coach details. Please try again later.</p>`;
+            }
+        });
+
+
+        document.getElementById('searchStaffBtn').addEventListener('click', async () => {
+            const staffName = document.getElementById('searchStaffInput').value;
+            if (!staffName) {
+                alert('Please enter a staff name.');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/search-staff/${staffName}`);
+                if (!response.ok) {
+                    throw new Error('Failed to fetch staff details');
+                }
+
+                const staff = await response.json();
+
+                // Check if staff members are found
+                if (staff.length === 0) {
+                    document.getElementById('searchStaffResult').innerHTML = `<p class="text-warning">No staff found with the name "${staffName}".</p>`;
+                    return;
+                }
+
+                // Generate HTML for displaying staff members
+                let output = `<table class="table table-bordered table-striped">
+            <thead>
+                <tr>
+                    <th>Employee ID</th>
+                    <th>Name</th>
+                    <th>Age</th>
+                    <th>Job Title</th>
+                    <th>Salary</th>
+                    <th>Team ID</th>
+                </tr>
+            </thead>
+            <tbody>`;
+
+                staff.forEach(member => {
+                    output += `
+                <tr>
+                    <td>${member.employee_id}</td>
+                    <td>${member.staff_name}</td>
+                    <td>${member.age}</td>
+                    <td>${member.job_title}</td>
+                    <td>$${member.salary}</td>
+                    <td>${member.team_id}</td>
+                </tr>`;
+                });
+
+                output += `</tbody></table>`;
+                document.getElementById('searchStaffResult').innerHTML = output;
+
+            } catch (err) {
+                console.error(err);
+                document.getElementById('searchStaffResult').innerHTML = `<p class="text-danger">Error fetching staff details. Please try again later.</p>`;
+            }
+        });
+        // Event listener for "View All Stadiums"
+        document.getElementById('viewAllStadiumsBtn').addEventListener('click', async () => {
+            try {
+                const response = await fetch('/get-all-stadiums');
+                if (!response.ok) {
+                    throw new Error('Failed to fetch stadiums. Please check the backend API.');
+                }
+
+                const stadiums = await response.json();
+
+                const stadiumsContainer = document.getElementById('allStadiums');
+                if (!stadiumsContainer) {
+                    console.error('No container for stadiums in modal.');
+                    return;
+                }
+
+                if (stadiums.length === 0) {
+                    stadiumsContainer.innerHTML = `<p class="text-warning">No stadiums available.</p>`;
+                } else {
+                    let output = `<table class="table table-bordered table-striped">
+            <thead>
+                <tr>
+                    <th>Stadium ID</th>
+                    <th>Name</th>
+                    <th>Location</th>
+                    <th>Capacity</th>
+                </tr>
+            </thead>
+            <tbody>`;
+
+                    stadiums.forEach(stadium => {
+                        output += `
+                <tr>
+                    <td>${stadium.stadium_id}</td>
+                    <td>${stadium.stadium_name}</td>
+                    <td>${stadium.location}</td>
+                    <td>${stadium.capacity}</td>
+                </tr>`;
+                    });
+
+                    output += `</tbody></table>`;
+                    stadiumsContainer.innerHTML = output;
+                }
+            } catch (error) {
+                console.error('Error fetching stadiums:', error);
+                document.getElementById('allStadiums').innerHTML = `<p class="text-danger">Error fetching stadiums. Please try again later.</p>`;
+            }
+        });
+        // Add New Stadium Functionality
+        document.getElementById('addStadiumForm').addEventListener('submit', async (event) => {
+            event.preventDefault();
+
+            // Log values for debugging
+            console.log("Stadium ID:", document.getElementById('stadiumIdField').value);
+            console.log("Stadium Name:", document.getElementById('stadiumNameField').value);
+            console.log("Location:", document.getElementById('stadiumLocationField').value);
+            console.log("Capacity:", document.getElementById('stadiumCapacityField').value);
+
+            // Collect form data
+            const data = {
+                stadium_id: document.getElementById('stadiumIdField').value,
+                stadium_name: document.getElementById('stadiumNameField').value,
+                location: document.getElementById('stadiumLocationField').value,
+                capacity: document.getElementById('stadiumCapacityField').value,
+            };
+
+            if (!data.stadium_id || !data.stadium_name || !data.location || !data.capacity) {
+                alert('All fields are required.');
+                return;
+            }
+
+            try {
+                const response = await fetch('/add-stadium', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data),
+                });
+
+                if (response.ok) {
+                    alert('Stadium added successfully!');
+                    document.getElementById('addStadiumForm').reset();
+                } else {
+                    alert(`Error: ${await response.text()}`);
+                }
+            } catch (error) {
+                console.error('Error adding stadium:', error);
+                alert('An error occurred while adding the stadium.');
+            }
+        });
+
+        // Event listener for "View All Games"
+        document.getElementById('viewAllGamesBtn').addEventListener('click', async () => {
+            try {
+                const response = await fetch('/get-all-games');
+                if (!response.ok) {
+                    throw new Error('Failed to fetch games. Please check the backend API.');
+                }
+
+                const games = await response.json();
+
+                const gamesContainer = document.getElementById('allGames');
+                if (!gamesContainer) {
+                    console.error('No container for games in modal.');
+                    return;
+                }
+
+                if (games.length === 0) {
+                    gamesContainer.innerHTML = `<p class="text-warning">No games available.</p>`;
+                } else {
+                    let output = `<table class="table table-bordered table-striped">
+                <thead>
+                    <tr>
+                        <th>Game ID</th>
+                        <th>Date</th>
+                        <th>Score</th>
+                        <th>Opponent</th>
+                        <th>Stadium ID</th>
+                        <th>Home Team</th>
+                    </tr>
+                </thead>
+                <tbody>`;
+
+                    games.forEach(game => {
+                        const formattedDate = new Date(game.date).toDateString();
+                        output += `
+                <tr>
+                    <td>${game.game_id}</td>
+                    <td>${formattedDate}</td>
+                    <td>${game.score}</td>
+                    <td>${game.opponent}</td>
+                    <td>${game.stadium_id}</td>
+                    <td>${game.home_team || 'N/A'}</td>
+                </tr>`;
+                    });
+
+                    output += `</tbody></table>`;
+                    gamesContainer.innerHTML = output;
+                }
+            } catch (error) {
+                console.error('Error fetching games:', error);
+                document.getElementById('allGames').innerHTML = `<p class="text-danger">Error fetching games. Please try again later.</p>`;
+            }
+        });
+
+
+        // Event listener for "Add Game"
+        document.getElementById('addGameForm').addEventListener('submit', async (event) => {
+            event.preventDefault();
+
+            const data = {
+                game_id: document.getElementById('gameIdField').value,
+                date: document.getElementById('gameDateField').value,
+                score: document.getElementById('gameScoreField').value,
+                opponent: document.getElementById('gameOpponentField').value,
+                stadium_id: document.getElementById('gameStadiumIdField').value
+            };
+
+            if (!data.game_id || !data.date || !data.score || !data.opponent || !data.stadium_id) {
+                alert('All fields are required.');
+                return;
+            }
+
+            try {
+                const response = await fetch('/add-game', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                if (response.ok) {
+                    alert('Game added successfully!');
+                    document.getElementById('addGameForm').reset();
+                } else {
+                    alert(`Error: ${await response.text()}`);
+                }
+            } catch (error) {
+                console.error('Error adding game:', error);
+                alert('An error occurred while adding the game.');
+            }
+        });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    </script>
+</body>
+
+</html>
