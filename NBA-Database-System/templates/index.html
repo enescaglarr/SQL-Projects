@@ -27,19 +27,6 @@
         import { onChildAdded } from "https://www.gstatic.com/firebasejs/9.17.1/firebase-database.js";
 
 
-
-
-        const firebaseConfig = {
-            apiKey: "AIzaSyAMEQvNXa9EP5-shct9cEJfF1aURxMMBw8",
-            authDomain: "nba-database-management.firebaseapp.com",
-            databaseURL: "https://nba-database-management-default-rtdb.europe-west1.firebasedatabase.app",
-            projectId: "nba-database-management",
-            storageBucket: "nba-database-management.firebasestorage.app",
-            messagingSenderId: "717591143638",
-            appId: "1:717591143638:web:248687875300de6cfc1577",
-            measurementId: "G-WXG8TVS3D5"
-        };
-
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const database = getDatabase(app);
