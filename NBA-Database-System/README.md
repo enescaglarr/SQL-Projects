@@ -81,20 +81,9 @@ This project is a comprehensive **NBA Team Management System** designed to manag
 2. Add a new player and trigger the `AfterPlayerInsert` trigger to log the addition.
 3. Retrieve stadium information using the `GetAllStadiums` procedure.
 
-## Screenshots
-### Support Page
-![Support Page](https://your-image-link.com)
-
-### Admin Panel
-![Admin Panel](https://your-image-link.com)
-
 ## Credits
-- **Çağla Güzel** - [GitHub Profile](#)
-- **Enes Çağlar** - [GitHub Profile](#)
-
-## References
-- [Phase 2 Report](https://your-link.com)
-- [Phase 3 Report](https://your-link.com)
+- **Çağla Güzel** -
+- **Enes Çağlar** - 
 
 ---
 
